@@ -20,13 +20,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from funding_monitor import FETCHERS, HOURS_PER_YEAR
 
-# --- 設定(環境変数で上書き可) ---
-EXCLUDE = set(os.environ.get("EXCLUDE_VENUES", "Binance,Bybit").split(","))
-LEG_MIN_VOL = float(os.environ.get("LEG_MIN_VOL", 3e6))   # 発掘で「脚」に採用する最低24h出来高
-THIN_VOL = float(os.environ.get("THIN_VOL", 1e6))         # これ未満は追跡ペアで「薄い」警告
-COST_BUFFER = float(os.environ.get("COST_BUFFER", 3.0))  # ネット概算で引く年率コスト%
-WATCH_ALERT = float(os.environ.get("WATCH_ALERT", 12.0))   # 追跡ペアの通知閾値(年率%)
-DISCOVER_ALERT = float(os.environ.get("DISCOVER_ALERT", 30.0))  # 発掘機会の通知閾値
+# --- 設定(環境変数で上書き可。未設定/空文字は既定値に落ちる) ---
+def envf(name, default):
+    return float(os.environ.get(name) or default)
+
+EXCLUDE = set((os.environ.get("EXCLUDE_VENUES") or "Binance,Bybit").split(","))
+LEG_MIN_VOL = envf("LEG_MIN_VOL", 3e6)   # 発掘で「脚」に採用する最低24h出来高
+THIN_VOL = envf("THIN_VOL", 1e6)         # これ未満は追跡ペアで「薄い」警告
+COST_BUFFER = envf("COST_BUFFER", 3.0)   # ネット概算で引く年率コスト%
+WATCH_ALERT = envf("WATCH_ALERT", 12.0)   # 追跡ペアの通知閾値(年率%)
+DISCOVER_ALERT = envf("DISCOVER_ALERT", 30.0)  # 発掘機会の通知閾値
 PER_TIMEOUT = 25
 
 # 発掘対象の主要コイン(流動性のある確立銘柄のみ。新規上場の薄商いノイズを排除)
