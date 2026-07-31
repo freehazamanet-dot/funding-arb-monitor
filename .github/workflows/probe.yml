@@ -1,0 +1,21 @@
+name: exchange-reachability-probe
+
+# 地理ブロック判定: 各取引所の公開APIがGitHub Actions(米国Azure IP)から到達できるか
+# 手動実行(Actionsタブ → Run workflow)。結果はジョブの Summary に表示される。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Probe exchange reachability
+        run: python3 probe.py

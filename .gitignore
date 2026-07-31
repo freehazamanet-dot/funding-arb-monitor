@@ -1,0 +1,9 @@
+# データ本体(巨大SQLite)はコミットしない
+data/*.db
+data/*.db-journal
+data/*.sqlite
+# ログ・キャッシュ
+logs/
+__pycache__/
+*.pyc
+.DS_Store
