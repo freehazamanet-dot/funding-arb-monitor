@@ -1,0 +1,45 @@
+name: collect-funding
+
+# 30分ごとに到達可能な取引所の資金調達率を収集し、docs/data を更新してコミット。
+# Discord通知は Settings > Secrets に DISCORD_WEBHOOK を登録すると有効になる。
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # 30分間隔(private無料枠2000分/月に収まる)。手動でも実行可
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect-funding
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect funding rates
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          # 必要なら閾値を Variables で上書き可
+          WATCH_ALERT: ${{ vars.WATCH_ALERT }}
+          DISCOVER_ALERT: ${{ vars.DISCOVER_ALERT }}
+        run: python3 collect.py
+
+      - name: Commit data if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          if git diff --cached --quiet; then
+            echo "変更なし(スキップ)"
+          else
+            git commit -m "data: funding snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi

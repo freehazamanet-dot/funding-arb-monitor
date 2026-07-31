@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>資金調達率アービ 監視</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c232c; --line:#283039;
+  --ink:#e6edf3; --ink2:#9aa7b4; --ink3:#6b7684;
+  --pos:#3fb950; --neg:#f85149; --warn:#d29922; --accent:#2f81f7;
+  --pos-bg:#12261a; --warn-bg:#2b2410;
+}
+@media (prefers-color-scheme: light){
+  :root{ --bg:#f6f8fa; --panel:#fff; --panel2:#f6f8fa; --line:#d0d7de;
+    --ink:#1f2328; --ink2:#57606a; --ink3:#818b98;
+    --pos:#1a7f37; --neg:#cf222e; --warn:#9a6700; --accent:#0969da;
+    --pos-bg:#dafbe1; --warn-bg:#fff8c5; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,"Hiragino Sans","Segoe UI",system-ui,sans-serif;
+  font-size:15px;line-height:1.5}
+.wrap{max-width:1000px;margin:0 auto;padding:20px 18px 80px}
+.tnum{font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;
+  padding-bottom:14px;border-bottom:1px solid var(--line)}
+h1{font-size:19px;margin:0;font-weight:800;letter-spacing:-.01em}
+.status{font-size:12.5px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.status b{color:var(--ink)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.fresh{background:var(--pos)} .stale{background:var(--warn)} .dead{background:var(--neg)}
+h2{font-size:15px;font-weight:800;margin:30px 0 4px}
+.sub{font-size:12.5px;color:var(--ink3);margin:0 0 12px}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:11px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px}
+th{text-align:right;font-size:11px;font-weight:700;color:var(--ink3);text-transform:uppercase;
+  letter-spacing:.03em;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--panel2)}
+th.l,td.l{text-align:left}
+td{text-align:right;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--panel2)}
+.coin{font-weight:800;font-size:14px}
+.route{color:var(--ink2)} .venue{color:var(--ink)}
+.big{font-weight:800;font-size:15px}
+.pos{color:var(--pos)} .neg{color:var(--neg)}
+.vol{font-size:11.5px;color:var(--ink3)}
+.badge{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:5px;margin-left:4px}
+.b-warn{background:var(--warn-bg);color:var(--warn)} .b-na{background:var(--panel2);color:var(--ink3)}
+.b-ok{background:var(--pos-bg);color:var(--pos)}
+.note{font-size:12px;color:var(--ink3);margin-top:26px;line-height:1.6}
+.err{color:var(--neg)}
+button{font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;background:var(--panel);
+  color:var(--ink2);border:1px solid var(--line);border-radius:8px;padding:5px 11px}
+button:hover{border-color:var(--accent);color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>資金調達率アービ 監視</h1>
+    <div class="status" id="status">読み込み中…</div>
+  </header>
+
+  <h2>追跡ペア <span class="sub" style="font-weight:400">検証済みの固定キャリー(グロス年率 = ショート脚 − ロング脚)</span></h2>
+  <div class="tbl-wrap">
+    <table id="watched">
+      <thead><tr>
+        <th class="l">コイン</th><th class="l">ロング(受取側)</th><th class="l">ショート</th>
+        <th>ロング年率</th><th>ショート年率</th><th>グロス/yr</th><th>ネット概算</th><th class="l">状態</th>
+      </tr></thead><tbody></tbody>
+    </table>
+  </div>
+
+  <h2>発掘機会 <span class="sub" style="font-weight:400">主要コイン限定・出来高フィルタ通過のみ(上位)</span></h2>
+  <div class="tbl-wrap">
+    <table id="ops">
+      <thead><tr>
+        <th class="l">#</th><th class="l">コイン</th><th class="l">ロング</th><th class="l">ショート</th>
+        <th>ロング年率</th><th>ショート年率</th><th>グロス/yr</th><th>ネット概算</th><th>脚出来高</th>
+      </tr></thead><tbody></tbody>
+    </table>
+  </div>
+
+  <p class="note" id="note"></p>
+  <p class="note"><button onclick="load()">↻ 今すぐ更新</button> &nbsp;5分ごとに自動更新します。</p>
+</div>
+
+<script>
+const yen = "%";
+function pct(v){ return v==null ? "—" : (v>=0?"+":"") + v.toFixed(1) + "%"; }
+function vol(v){ return v==null ? "—" : "$" + (v>=1e9? (v/1e9).toFixed(1)+"B" : (v/1e6).toFixed(1)+"M"); }
+function cls(v){ return v==null ? "" : (v>=0?"pos":"neg"); }
+function ago(sec){ const m=Math.round(sec/60); return m<1?"数秒前":m<60?m+"分前":Math.round(m/60)+"時間前"; }
+
+async function load(){
+  const st = document.getElementById("status");
+  try{
+    const r = await fetch("./data/latest.json?_=" + Date.now());
+    if(!r.ok) throw new Error("latest.json " + r.status);
+    const d = await r.json();
+    render(d);
+  }catch(e){
+    st.innerHTML = '<span class="dot dead"></span><span class="err">データ取得失敗: '+e.message+'</span>';
+  }
+}
+
+function render(d){
+  const age = Date.now()/1000 - d.unix_ts;
+  const cl = age<3600 ? "fresh" : age<10800 ? "stale" : "dead";
+  const failed = Object.keys(d.venues_failed||{}).length;
+  document.getElementById("status").innerHTML =
+    `<span class="dot ${cl}"></span>更新 <b>${ago(age)}</b> · 到達 <b>${d.venues_ok.length}</b>取引所`
+    + (failed?` · 失敗 ${failed}`:``) + ` · <span class="tnum">${d.runner||""}</span>`;
+
+  const wb = document.querySelector("#watched tbody"); wb.innerHTML="";
+  for(const w of d.watched){
+    const stBadge = w.status==="ok" ? '<span class="badge b-ok">OK</span>'
+      : w.status && w.status.startsWith("注意") ? `<span class="badge b-warn">${w.status.replace("注意: ","")}</span>`
+      : `<span class="badge b-na">${w.status}</span>`;
+    wb.insertAdjacentHTML("beforeend", `<tr>
+      <td class="l coin">${w.coin}</td>
+      <td class="l"><span class="venue">${w.long}</span> <span class="vol">${vol(w.long_vol)}</span></td>
+      <td class="l"><span class="venue">${w.short}</span> <span class="vol">${vol(w.short_vol)}</span></td>
+      <td class="${cls(w.long_ann)}">${pct(w.long_ann)}</td>
+      <td class="${cls(w.short_ann)}">${pct(w.short_ann)}</td>
+      <td class="big ${cls(w.gross)}">${pct(w.gross)}</td>
+      <td class="${cls(w.net_est)}">${pct(w.net_est)}</td>
+      <td class="l">${stBadge}</td></tr>`);
+  }
+
+  const ob = document.querySelector("#ops tbody"); ob.innerHTML="";
+  (d.opportunities||[]).forEach((o,i)=>{
+    ob.insertAdjacentHTML("beforeend", `<tr>
+      <td class="l">${i+1}</td>
+      <td class="l coin">${o.coin}</td>
+      <td class="l venue">${o.long}</td>
+      <td class="l venue">${o.short}</td>
+      <td class="${cls(o.long_ann)}">${pct(o.long_ann)}</td>
+      <td class="${cls(o.short_ann)}">${pct(o.short_ann)}</td>
+      <td class="big pos">${pct(o.gross)}</td>
+      <td class="${cls(o.net_est)}">${pct(o.net_est)}</td>
+      <td class="vol">${vol(o.long_vol)} / ${vol(o.short_vol)}</td></tr>`);
+  });
+
+  const p = d.params||{};
+  document.getElementById("note").innerHTML =
+    `※ ネット概算 = グロス − コスト${p.cost_buffer_pct}%/yr(手数料・執行コストの目安)。`
+    + `除外取引所: ${(d.excluded||[]).join(", ")}(米国クラウドIPから遮断のため)。`
+    + `発掘は主要コイン・脚出来高$${(p.leg_min_vol/1e6)||3}M以上に限定。`
+    + `出来高$${(p.thin_vol/1e6)||1}M未満の脚は「薄い」警告(執行困難の恐れ)。`;
+}
+
+load();
+setInterval(load, 300000);
+</script>
+</body>
+</html>
