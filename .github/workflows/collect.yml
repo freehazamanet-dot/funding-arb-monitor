@@ -4,7 +4,8 @@ name: collect-funding
 # Discord通知は Settings > Secrets に DISCORD_WEBHOOK を登録すると有効になる。
 on:
   schedule:
-    - cron: "*/30 * * * *"   # 30分間隔(private無料枠2000分/月に収まる)。手動でも実行可
+    # オフピーク時刻(:13/:43)で30分間隔。:00/:30は混雑でドロップされやすいため避ける
+    - cron: "13,43 * * * *"
   workflow_dispatch:
 
 permissions:
