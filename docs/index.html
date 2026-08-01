@@ -49,6 +49,20 @@ tbody tr:hover{background:var(--panel2)}
 .badge{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:5px;margin-left:4px}
 .b-warn{background:var(--warn-bg);color:var(--warn)} .b-na{background:var(--panel2);color:var(--ink3)}
 .b-ok{background:var(--pos-bg);color:var(--pos)}
+.pf{background:linear-gradient(155deg,var(--panel2),var(--panel) 75%);border:1px solid var(--line);
+  border-radius:14px;padding:20px 22px;margin-top:20px;box-shadow:0 8px 24px -14px rgba(0,0,0,.4)}
+.pf-head{display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px 22px;align-items:flex-end}
+.pf-label{font-size:12.5px;color:var(--ink3);font-weight:700}
+.pf-value{font-size:clamp(30px,5.5vw,40px);font-weight:800;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;margin-top:3px;line-height:1.05}
+.pf-side{display:flex;gap:22px}
+.pf-kpi{text-align:right}
+.pf-kpi .k{display:block;font-size:11px;color:var(--ink3);margin-bottom:1px}
+.pf-kpi b{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+.pf-legs{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px}
+.leg{font-size:12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 11px}
+.leg .lc{font-weight:800} .leg .lp{font-variant-numeric:tabular-nums;margin-left:7px}
+.pf-note{font-size:11px;color:var(--ink3);margin-top:13px;line-height:1.55}
 .note{font-size:12px;color:var(--ink3);margin-top:26px;line-height:1.6}
 .err{color:var(--neg)}
 button{font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;background:var(--panel);
@@ -62,6 +76,22 @@ button:hover{border-color:var(--accent);color:var(--accent)}
     <h1>資金調達率アービ 監視</h1>
     <div class="status" id="status">読み込み中…</div>
   </header>
+
+  <section class="pf" id="pf" hidden>
+    <div class="pf-head">
+      <div>
+        <div class="pf-label">もし ¥<span id="pf-cap">1,000,000</span> を投じていたら(理論値・ライブ加算)</div>
+        <div class="pf-value" id="pf-value">—</div>
+      </div>
+      <div class="pf-side">
+        <div class="pf-kpi"><span class="k">損益</span><b id="pf-pnl">—</b></div>
+        <div class="pf-kpi"><span class="k">実現年率</span><b id="pf-ann">—</b></div>
+        <div class="pf-kpi"><span class="k">運用</span><b id="pf-days">—</b></div>
+      </div>
+    </div>
+    <div class="pf-legs" id="pf-legs"></div>
+    <div class="pf-note">※ 皮算用(理論値)。手数料・スリッページ・約定不成立・清算リスクは未考慮。到達可能な追跡ペアに均等配分し、その時々のネット年率で積算。dYdX等の薄い脚は実際には約定困難な点に注意。</div>
+  </section>
 
   <h2>追跡ペア <span class="sub" style="font-weight:400">検証済みの固定キャリー(グロス年率 = ショート脚 − ロング脚)</span></h2>
   <div class="tbl-wrap">
@@ -88,7 +118,10 @@ button:hover{border-color:var(--accent);color:var(--accent)}
 </div>
 
 <script>
-const yen = "%";
+let PF=null, PFTIMER=null;
+const YEAR_SEC=365*24*3600;
+function jpy(v){ return "¥"+Math.round(v).toLocaleString("ja-JP"); }
+function jpySigned(v){ return (v>=0?"+":"−")+"¥"+Math.round(Math.abs(v)).toLocaleString("ja-JP"); }
 function pct(v){ return v==null ? "—" : (v>=0?"+":"") + v.toFixed(1) + "%"; }
 function vol(v){ return v==null ? "—" : "$" + (v>=1e9? (v/1e9).toFixed(1)+"B" : (v/1e6).toFixed(1)+"M"); }
 function cls(v){ return v==null ? "" : (v>=0?"pos":"neg"); }
@@ -106,6 +139,32 @@ async function load(){
   }
 }
 
+function renderPF(){
+  if(!PF) return;
+  document.getElementById("pf").hidden=false;
+  document.getElementById("pf-cap").textContent = Math.round(PF.capital).toLocaleString("ja-JP");
+  const a=document.getElementById("pf-ann");
+  a.textContent = (PF.realized_ann_pct>=0?"+":"")+PF.realized_ann_pct.toFixed(1)+"%";
+  a.className = PF.realized_ann_pct>=0?"pos":"neg";
+  document.getElementById("pf-days").textContent = PF.days.toFixed(1)+"日";
+  document.getElementById("pf-legs").innerHTML = PF.positions.map(p=>
+    `<span class="leg"><span class="lc">${p.coin}</span>`
+    + `<span class="route" style="font-size:11px"> ${p.pair}</span>`
+    + `<span class="lp ${p.net_ann>=0?'pos':'neg'}">${(p.net_ann>=0?'+':'')+p.net_ann.toFixed(1)}%</span></span>`).join("");
+}
+function tickPF(){
+  if(!PF) return;
+  const now = Date.now()/1000;
+  let pnl=0;
+  for(const p of PF.positions){
+    pnl += p.cum_pnl + p.capital*(p.net_ann/100)*((now-PF.last_ts)/YEAR_SEC);
+  }
+  document.getElementById("pf-value").textContent = jpy(PF.capital+pnl);
+  const el=document.getElementById("pf-pnl");
+  el.textContent = jpySigned(pnl)+" ("+(pnl>=0?"+":"")+(pnl/PF.capital*100).toFixed(2)+"%)";
+  el.className = pnl>=0?"pos":"neg";
+}
+
 function render(d){
   const age = Date.now()/1000 - d.unix_ts;
   const cl = age<3600 ? "fresh" : age<10800 ? "stale" : "dead";
@@ -113,6 +172,8 @@ function render(d){
   document.getElementById("status").innerHTML =
     `<span class="dot ${cl}"></span>更新 <b>${ago(age)}</b> · 到達 <b>${d.venues_ok.length}</b>取引所`
     + (failed?` · 失敗 ${failed}`:``) + ` · <span class="tnum">${d.runner||""}</span>`;
+
+  if(d.portfolio){ PF=d.portfolio; renderPF(); tickPF(); if(!PFTIMER) PFTIMER=setInterval(tickPF,1000); }
 
   const wb = document.querySelector("#watched tbody"); wb.innerHTML="";
   for(const w of d.watched){

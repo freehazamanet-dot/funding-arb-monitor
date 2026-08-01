@@ -32,6 +32,10 @@ WATCH_ALERT = envf("WATCH_ALERT", 12.0)   # 追跡ペアの通知閾値(年率%)
 DISCOVER_ALERT = envf("DISCOVER_ALERT", 30.0)  # 発掘機会の通知閾値
 PER_TIMEOUT = 25
 
+# ペーパー損益(もし実弾で投資していたら) — 到達可能な追跡ペアに均等配分
+PAPER_CAPITAL = envf("PAPER_CAPITAL", 1_000_000)   # 総投下資本(円)
+PAPER_COINS = [c for c in (os.environ.get("PAPER_COINS") or "SOL,BTC,ETH").split(",") if c]
+
 # 発掘対象の主要コイン(流動性のある確立銘柄のみ。新規上場の薄商いノイズを排除)
 UNIVERSE = set(os.environ.get("UNIVERSE", "").split(",")) if os.environ.get("UNIVERSE") else {
     "BTC", "ETH", "SOL", "XRP", "ADA", "DOGE", "LTC", "BCH", "LINK", "AVAX",
@@ -152,6 +156,88 @@ def discover(coin_map, top=15):
     return ops[:top]
 
 
+def _pair_label(coin):
+    for w in WATCHED:
+        if w["coin"] == coin:
+            return f'{w["long"]}→{w["short"]}'
+    return coin
+
+
+def _load_history_points():
+    """全history jsonlを時系列で [(ts, {coin: gross})] として返す(backfill用)"""
+    pts = []
+    hist_dir = os.path.join(HERE, "docs", "data", "history")
+    if os.path.isdir(hist_dir):
+        for fn in sorted(os.listdir(hist_dir)):
+            if not fn.endswith(".jsonl"):
+                continue
+            with open(os.path.join(hist_dir, fn), encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        j = json.loads(line)
+                        pts.append((j["ts"], j.get("watched", {})))
+                    except Exception:
+                        pass
+    pts.sort(key=lambda x: x[0])
+    return pts
+
+
+def update_portfolio(watched, ts):
+    """『もし¥PAPER_CAPITALを投資していたら』の累積損益(理論値)を更新して保存。
+    各期間で 資本×ネット年率×(経過時間/年) を積算する近似。"""
+    path = os.path.join(HERE, "docs", "data", "portfolio.json")
+    cap_each = PAPER_CAPITAL / len(PAPER_COINS)
+    net_now = {w["coin"]: w["net_est"] for w in watched if w.get("net_est") is not None}
+
+    def accrue(cum, coin, net, dt_h):
+        return cum + cap_each * (net / 100.0) * (dt_h / HOURS_PER_YEAR)
+
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            pf = json.load(fh)
+        dt_h = max((ts - pf["last_ts"]) / 3600.0, 0)
+        for p in pf["positions"]:
+            r = net_now.get(p["coin"])
+            if r is not None:
+                p["cum_pnl"] = accrue(p["cum_pnl"], p["coin"], r, dt_h)
+                p["net_ann"] = r
+        pf["last_ts"] = ts
+    else:
+        # 初回: 既存の履歴からバックフィル(gross−コスト=ネットで区間積分)
+        pts = _load_history_points()
+        pos = {c: {"coin": c, "pair": _pair_label(c), "capital": round(cap_each),
+                   "cum_pnl": 0.0, "net_ann": net_now.get(c, 0.0)} for c in PAPER_COINS}
+        entry_ts = pts[0][0] if pts else ts
+        for (t0, w0), (t1, _w1) in zip(pts, pts[1:]):
+            dt_h = (t1 - t0) / 3600.0
+            for c in PAPER_COINS:
+                g = w0.get(c)
+                if g is not None:
+                    pos[c]["cum_pnl"] = accrue(pos[c]["cum_pnl"], c, g - COST_BUFFER, dt_h)
+        # 最後の履歴点→現在も現行ネットで足す
+        if pts:
+            dt_h = (ts - pts[-1][0]) / 3600.0
+            for c in PAPER_COINS:
+                r = net_now.get(c)
+                if r is not None:
+                    pos[c]["cum_pnl"] = accrue(pos[c]["cum_pnl"], c, r, dt_h)
+        pf = {"capital": PAPER_CAPITAL, "entry_ts": entry_ts, "last_ts": ts,
+              "cost_buffer_pct": COST_BUFFER, "positions": list(pos.values())}
+
+    total = sum(p["cum_pnl"] for p in pf["positions"])
+    days = max((ts - pf["entry_ts"]) / 86400.0, 1e-9)
+    pf["total_pnl"] = round(total, 1)
+    pf["total_value"] = round(PAPER_CAPITAL + total, 1)
+    pf["pnl_pct"] = round(total / PAPER_CAPITAL * 100, 3)
+    pf["days"] = round(days, 2)
+    pf["realized_ann_pct"] = round(total / PAPER_CAPITAL / days * 365 * 100, 1)
+    for p in pf["positions"]:
+        p["cum_pnl"] = round(p["cum_pnl"], 1)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(pf, fh, ensure_ascii=False, indent=1)
+    return pf
+
+
 def notify_discord(watched, ops):
     url = os.environ.get("DISCORD_WEBHOOK")
     if not url:
@@ -183,6 +269,7 @@ def main():
     coin_map = build_coin_map(venues)
     watched = watched_rows(coin_map)
     ops = discover(coin_map)
+    pf = update_portfolio(watched, ts)
 
     latest = {
         "generated_at": datetime.fromtimestamp(ts, timezone.utc).isoformat(),
@@ -196,6 +283,7 @@ def main():
                    "watch_alert": WATCH_ALERT, "discover_alert": DISCOVER_ALERT},
         "watched": watched,
         "opportunities": ops,
+        "portfolio": pf,
     }
 
     data_dir = os.path.join(HERE, "docs", "data")
@@ -207,6 +295,7 @@ def main():
     # 履歴は軽量1行(追跡ペアのグロス + 発掘トップ3)
     hist_line = {"ts": ts,
                  "watched": {w["coin"]: w["gross"] for w in watched if w["gross"] is not None},
+                 "pnl": pf["total_pnl"], "value": pf["total_value"],
                  "top": [{"c": o["coin"], "g": o["gross"], "l": o["long"], "s": o["short"]}
                          for o in ops[:3]]}
     month = datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m")
@@ -217,6 +306,9 @@ def main():
 
     print(f"{datetime.now():%Y-%m-%d %H:%M:%S} 到達{len(venues)}取引所 失敗{len(failed)} "
           f"発掘{len(ops)}件 通知={'送信' if sent else 'なし'}", flush=True)
+    print(f'  ペーパー¥{PAPER_CAPITAL:,.0f} → 評価額¥{pf["total_value"]:,.0f} '
+          f'(損益 {pf["total_pnl"]:+,.0f}円 / {pf["pnl_pct"]:+.2f}% / 実現年率{pf["realized_ann_pct"]:+.1f}% / {pf["days"]:.1f}日)',
+          flush=True)
     for w in watched:
         g = f'{w["gross"]:+.1f}%' if w["gross"] is not None else w["status"]
         print(f'  追跡 {w["coin"]:<4} {w["long"]}→{w["short"]}: {g}', flush=True)
