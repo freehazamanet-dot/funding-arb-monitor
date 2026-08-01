@@ -1,0 +1,34 @@
+{
+ "capital": 1000000.0,
+ "entry_ts": 1785537522,
+ "last_ts": 1785574113,
+ "cost_buffer_pct": 3.0,
+ "positions": [
+  {
+   "coin": "SOL",
+   "pair": "dYdX→HTX",
+   "capital": 333333,
+   "cum_pnl": 47.4,
+   "net_ann": 9.1
+  },
+  {
+   "coin": "BTC",
+   "pair": "dYdX→Hyperliquid",
+   "capital": 333333,
+   "cum_pnl": 13.5,
+   "net_ann": 7.12
+  },
+  {
+   "coin": "ETH",
+   "pair": "dYdX→Hyperliquid",
+   "capital": 333333,
+   "cum_pnl": 79.2,
+   "net_ann": 6.16
+  }
+ ],
+ "total_pnl": 140.1,
+ "total_value": 1000140.1,
+ "pnl_pct": 0.014,
+ "days": 0.42,
+ "realized_ann_pct": 12.1
+}
