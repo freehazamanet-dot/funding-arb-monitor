@@ -1,7 +1,7 @@
 {
  "capital": 1000000.0,
  "entry_ts": 1785537522,
- "last_ts": 1787085493,
+ "last_ts": 1787086741,
  "cost_model": {
   "fee_bps_per_fill": 5.0,
   "slip_base_bps": 3.0,
@@ -14,27 +14,27 @@
    "coin": "SOL",
    "pair": "dYdX→HTX",
    "capital": 333333,
-   "carry_pnl": 2808.1,
+   "carry_pnl": 2808.7,
    "trade_cost": 4389.0,
-   "risk_cost": 245.1,
+   "risk_cost": 245.3,
    "roundtrip_bps": 131.7,
    "fill_warn": [],
-   "gross_ann": 7.25,
-   "net_ann": 5.75,
-   "cum_pnl": -1826.0
+   "gross_ann": 4.28,
+   "net_ann": 2.78,
+   "cum_pnl": -1825.6
   },
   {
    "coin": "BTC",
    "pair": "dYdX→Hyperliquid",
    "capital": 333333,
-   "carry_pnl": 1099.5,
+   "carry_pnl": 1099.0,
    "trade_cost": 1189.3,
-   "risk_cost": 245.1,
+   "risk_cost": 245.3,
    "roundtrip_bps": 35.7,
    "fill_warn": [],
-   "gross_ann": 0.0,
-   "net_ann": -1.5,
-   "cum_pnl": -334.9
+   "gross_ann": -3.73,
+   "net_ann": -5.23,
+   "cum_pnl": -335.6
   },
   {
    "coin": "ETH",
@@ -42,24 +42,24 @@
    "capital": 333333,
    "carry_pnl": 2248.8,
    "trade_cost": 1198.7,
-   "risk_cost": 245.1,
+   "risk_cost": 245.3,
    "roundtrip_bps": 36.0,
    "fill_warn": [],
-   "gross_ann": -1.07,
-   "net_ann": -2.57,
-   "cum_pnl": 805.0
+   "gross_ann": 0.28,
+   "net_ann": -1.22,
+   "cum_pnl": 804.8
   }
  ],
- "carry_pnl": 6156.4,
+ "carry_pnl": 6156.5,
  "trade_cost": 6777.0,
- "risk_cost": 735.3,
- "total_pnl": -1355.9,
- "total_value": 998644.1,
+ "risk_cost": 735.9,
+ "total_pnl": -1356.4,
+ "total_value": 998643.6,
  "pnl_pct": -0.136,
- "days": 17.92,
+ "days": 17.93,
  "realized_ann_pct": -2.8,
- "run_rate_ann": 0.6,
- "breakeven_days": 441.7,
+ "run_rate_ann": -1.2,
+ "breakeven_days": null,
  "broke_even": false,
  "fill_warns": []
 }
